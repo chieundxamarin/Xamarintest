@@ -43,10 +43,8 @@ namespace WebRTCAndLibVLC
 
     class Program
     {
-        private const string LOCALHOST_CERTIFICATE_PATH = "certs/localhost.pfx";
         private const int WEBSOCKET_PORT = 8081;
         private const string FFPLAY_DEFAULT_SDP_PATH = "ffplay.sdp";
-        private const string FFPLAY_DEFAULT_COMMAND = "ffplay -probesize 32 -protocol_whitelist \"file,rtp,udp\" -i {0}";
         private const int FFPLAY_DEFAULT_AUDIO_PORT = 5016;
         private const int FFPLAY_DEFAULT_VIDEO_PORT = 5018;
 
@@ -73,6 +71,7 @@ namespace WebRTCAndLibVLC
         private static List<SDPAudioVideoMediaFormat> AudioOfferFormats = new List<SDPAudioVideoMediaFormat> {
             new SDPAudioVideoMediaFormat(SDPMediaTypesEnum.audio, 111, "OPUS", 48000, 2, "minptime=10;useinbandfec=1")
         };
+
         private static List<SDPAudioVideoMediaFormat> VideoOfferFormats = new List<SDPAudioVideoMediaFormat> {
             new SDPAudioVideoMediaFormat(SDPMediaTypesEnum.video, 100, "VP8", 90000)
         };
@@ -86,10 +85,6 @@ namespace WebRTCAndLibVLC
             // Start web socket.
             Console.WriteLine("Starting web socket server...");
             _webSocketServer = new WebSocketServer(IPAddress.Any, WEBSOCKET_PORT);
-            //_webSocketServer = new WebSocketServer(IPAddress.Any, WEBSOCKET_PORT, true);
-            //_webSocketServer.SslConfiguration.ServerCertificate = new X509Certificate2(LOCALHOST_CERTIFICATE_PATH);
-            //_webSocketServer.SslConfiguration.CheckCertificateRevocation = false;
-            //_webSocketServer.Log.Level = WebSocketSharp.LogLevel.Debug;
             _webSocketServer.AddWebSocketService<WebRtcClient>("/", (client) =>
             {
                 client.WebSocketOpened += SendOffer;
@@ -111,18 +106,7 @@ namespace WebRTCAndLibVLC
             {
                 var keyProps = Console.ReadKey();
 
-                if (keyProps.KeyChar == 'k')
-                {
-                    if (_activePeerConnection != null)
-                    {
-                        Console.WriteLine("Requesting key frame.");
-                        var localVideoSsrc = _activePeerConnection.VideoLocalTrack.Ssrc;
-                        var remoteVideoSsrc = _activePeerConnection.VideoRemoteTrack.Ssrc;
-                        RTCPFeedback pli = new RTCPFeedback(localVideoSsrc, remoteVideoSsrc, PSFBFeedbackTypesEnum.PLI);
-                        _activePeerConnection.SendRtcpFeedback(SDPMediaTypesEnum.video, pli);
-                    }
-                }
-                else if (keyProps.KeyChar == 'q')
+                if (keyProps.KeyChar == 'q')
                 {
                     // Quit application.
                     Console.WriteLine("Quitting");
@@ -190,10 +174,19 @@ namespace WebRTCAndLibVLC
                     Core.Initialize();
                     _libvlc = new LibVLC();
                     _mediaPlayer = new MediaPlayer(_libvlc);
-                    _mediaPlayer.Volume = 10;
+                    //_mediaPlayer.Volume = 10;
                     var sdpFullPath = Path.Combine(Directory.GetParent(typeof(Program).Assembly.Location).FullName, FFPLAY_DEFAULT_SDP_PATH);
                     using var media = new Media(_libvlc, new Uri(sdpFullPath));
                     _mediaPlayer.Play(media);
+
+                    //if (_activePeerConnection != null)
+                    {
+                        // request key frames
+                        var localVideoSsrc = _activePeerConnection.VideoLocalTrack.Ssrc;
+                        var remoteVideoSsrc = _activePeerConnection.VideoRemoteTrack.Ssrc;
+                        RTCPFeedback pli = new RTCPFeedback(localVideoSsrc, remoteVideoSsrc, PSFBFeedbackTypesEnum.PLI);
+                        _activePeerConnection.SendRtcpFeedback(SDPMediaTypesEnum.video, pli);
+                    }
 
                     pc.OnRtpPacketReceived += (rep, media, rtpPkt) =>
                     {
@@ -257,11 +250,6 @@ namespace WebRTCAndLibVLC
             {
                 sw.Write(sdpOffer);
             }
-
-            string ffplayCommand = String.Format(FFPLAY_DEFAULT_COMMAND, FFPLAY_DEFAULT_SDP_PATH);
-            Console.WriteLine($"Start ffplay using the command below:");
-            Console.WriteLine(ffplayCommand);
-            Console.WriteLine($"To request the remote peer to send a video key frame press 'k'");
 
             rtpSession.Start();
             rtpSession.SetDestination(SDPMediaTypesEnum.audio, new IPEndPoint(IPAddress.Loopback, FFPLAY_DEFAULT_AUDIO_PORT), new IPEndPoint(IPAddress.Loopback, FFPLAY_DEFAULT_AUDIO_PORT + 1));
